@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Camera + Microphone Access</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      padding: 20px; 
+      background: #f5f6fa;
+    }
+    h2 { color: #2c3e50; }
+    #controls { margin-top: 12px; }
+    video { 
+      width: 100%; 
+      max-width: 480px; 
+      border: 2px solid #ccc; 
+      border-radius: 10px; 
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    button { 
+      padding: 10px 16px; 
+      margin: 5px 8px 5px 0; 
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: bold;
+      transition: all 0.3s ease;
+    }
+    /* Button colors */
+    #startBtn { background: #28a745; color: white; }
+    #startBtn:hover:enabled { background: #218838; transform: scale(1.05); }
+    #stopBtn { background: #dc3545; color: white; }
+    #stopBtn:hover:enabled { background: #c82333; transform: scale(1.05); }
+    #snapBtn { background: #007bff; color: white; }
+    #snapBtn:hover:enabled { background: #0069d9; transform: scale(1.05); }
+    #recordBtn { background: #ff9800; color: white; }
+    #recordBtn:hover:enabled { background: #e68900; transform: scale(1.05); }
+    #stopRecordBtn { background: #6f42c1; color: white; }
+    #stopRecordBtn:hover:enabled { background: #5936a2; transform: scale(1.05); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .notice { 
+      background:#fff3cd; 
+      padding:12px; 
+      border:1px solid #ffeeba; 
+      border-radius:8px; 
+      margin-bottom:12px;
+      color: #856404;
+      font-size: 15px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+    #snapshotContainer, #recordingContainer {
+      margin-top: 20px;
+    }
+    #snapshotContainer img, #recordedVideo {
+      max-width: 100%;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      margin-top: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <h2>Permission required to use Camera and Microphone</h2>
+  <div class="notice">
+    This page requires your explicit consent. When you press the "Allow" button, it will request access to your camera and microphone. Before granting access, make sure you know who is watching/listening.
+  </div>
+
+  <div id="controls">
+    <button id="startBtn">Allow — Start Camera/Microphone</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <button id="snapBtn" disabled>Take a Snapshot</button>
+    <button id="recordBtn" disabled>🔴 Start Recording</button>
+    <button id="stopRecordBtn" disabled>⏹ Stop Recording</button>
+  </div>
+
+  <div style="margin-top:12px;">
+    <video id="preview" autoplay playsinline></video>
+  </div>
+
+  <canvas id="snapCanvas" style="display:none;"></canvas>
+
+  <!-- Snapshot Preview Section -->
+  <div id="snapshotContainer" style="display:none;">
+    <h3>Snapshot Preview</h3>
+    <img id="snapshotImage" alt="Snapshot will appear here">
+  </div>
+
+  <!-- Recording Preview Section -->
+  <div id="recordingContainer" style="display:none;">
+    <h3>Recorded Video</h3>
+    <video id="recordedVideo" controls></video>
+    <br>
+    <a id="downloadLink" href="#" download="recording.webm" style="display:inline-block; margin-top:10px; padding:8px 14px; background:#17a2b8; color:white; border-radius:6px; text-decoration:none;">⬇ Download Video</a>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const snapBtn = document.getElementById('snapBtn');
+    const recordBtn = document.getElementById('recordBtn');
+    const stopRecordBtn = document.getElementById('stopRecordBtn');
+    const video = document.getElementById('preview');
+    const canvas = document.getElementById('snapCanvas');
+    const snapshotContainer = document.getElementById('snapshotContainer');
+    const snapshotImage = document.getElementById('snapshotImage');
+    const recordedVideo = document.getElementById('recordedVideo');
+    const recordingContainer = document.getElementById('recordingContainer');
+    const downloadLink = document.getElementById('downloadLink');
+
+    let stream = null;
+    let mediaRecorder;
+    let recordedChunks = [];
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        video.srcObject = stream;
+        stopBtn.disabled = false;
+        snapBtn.disabled = false;
+        recordBtn.disabled = false;
+        startBtn.disabled = true;
+      } catch (err) {
+        alert('Permission could not be obtained: ' + err.message);
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        video.srcObject = null;
+        stream = null;
+        stopBtn.disabled = true;
+        snapBtn.disabled = true;
+        recordBtn.disabled = true;
+        startBtn.disabled = false;
+      }
+    });
+
+    snapBtn.addEventListener('click', () => {
+      if (!stream) return;
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/png');
+      snapshotImage.src = dataUrl;
+      snapshotContainer.style.display = 'block';
+    });
+
+    recordBtn.addEventListener('click', () => {
+      if (!stream) return;
+      recordedChunks = [];
+      mediaRecorder = new MediaRecorder(stream);
+
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        recordedVideo.src = url;
+        downloadLink.href = url;
+        recordingContainer.style.display = 'block';
+      };
+
+      mediaRecorder.start();
+      recordBtn.disabled = true;
+      stopRecordBtn.disabled = false;
+    });
+
+    stopRecordBtn.addEventListener('click', () => {
+      mediaRecorder.stop();
+      recordBtn.disabled = false;
+      stopRecordBtn.disabled = true;
+    });
+  </script>
+</body>
+</html>
